@@ -1,6 +1,5 @@
 import pytest
 import krpc
-from kRPC_Automation.tests.common_support import establish_connection
 from kRPC_Automation.log_setup import logger
 
 @pytest.fixture(scope="module")
@@ -22,3 +21,19 @@ def krpc_connect():
         yield conn
     else:
         assert False, f"Failed to establish connection"
+
+@pytest.fixture(scope="function")
+def setup_active_vessel(krpc_connect):
+
+    logger.debug("Checking for active for vessel...")
+    conn = krpc_connect
+    try:
+        vessel = conn.space_center.active_vessel
+        logger.info(f"Active Vessel Found: {vessel.name}")
+        yield vessel
+    except Exception as ex:
+        logger.error("Could not find active vessel")
+        logger.error(f"Reason: {ex}")
+        assert False, f"Could not find active vessel - {ex}"
+
+    return krpc_connect
