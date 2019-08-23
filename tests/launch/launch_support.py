@@ -2,6 +2,7 @@ import time
 import krpc
 from kRPC_Automation.log_setup import logger
 
+
 def abort_launch(conn, vessel):
     if vessel.situation.name in ["pre_launch", "splashed", "landed"]:
         if vessel.recoverable:
@@ -23,7 +24,7 @@ def abort_launch(conn, vessel):
 def simple_launch(conn, vessel):
     success = False
     if vessel.situation.name != "pre_launch":
-        abort_launch(conn_vessel)
+        abort_launch(conn, vessel)
         return False
 
     vessel.auto_pilot.engage()
@@ -58,6 +59,7 @@ def simple_launch(conn, vessel):
 
     return True
 
+
 def wait_for_fuel_to_run_out(conn, vessel):
     logger.info("Waiting for fuel to run out...")
     fuel_amount = conn.get_call(vessel.resources.amount, 'SolidFuel')
@@ -69,6 +71,7 @@ def wait_for_fuel_to_run_out(conn, vessel):
         event.wait()
     return True
 
+
 def wait_for_safe_parachute(conn, vessel):
     logger.info("Waiting until safe to deploy parachute...")
     mean_altitude = conn.get_call(getattr, vessel.flight(), 'mean_altitude')
@@ -79,6 +82,7 @@ def wait_for_safe_parachute(conn, vessel):
     with event.condition:
         event.wait()
     return True
+
 
 def time_warp_to_land(conn, vessel, recover=False):
     if vessel.parts.parachutes[0].state.name == "active" or vessel.parts.parachutes[0].state.name == "semi_deployed":

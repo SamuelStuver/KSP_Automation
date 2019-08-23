@@ -2,6 +2,7 @@ import pytest
 import krpc
 from kRPC_Automation.log_setup import logger
 
+
 @pytest.fixture(scope="module")
 def krpc_connect():
 
@@ -21,6 +22,7 @@ def krpc_connect():
         yield conn
     else:
         assert False, f"Failed to establish connection"
+
 
 @pytest.fixture(scope="function")
 def setup_active_vessel(krpc_connect):
