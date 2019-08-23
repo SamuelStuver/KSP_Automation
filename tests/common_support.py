@@ -1,6 +1,6 @@
 import krpc
 import pytest
-from log_setup import logger
+from kRPC_Automation.log_setup import logger
 import time
 
 def establish_connection(name="Connection", address='192.168.0.11', rpc_port=5000, stream_port=5001):
