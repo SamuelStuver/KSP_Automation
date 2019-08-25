@@ -1,47 +1,48 @@
 import time
 import krpc
+import pytest
+import sys
+
+sys.path.append(r"C:\Users\samue")
+
 from kRPC_Automation.log_setup import logger
+from kRPC_Automation.tests.test_runner import test_runner, PytestExitCodes
 from kRPC_Automation.data_collection.data_streams import stream_value
 
+def log_and_print(message):
+    logger.info(message)
+    print(message)
 
-def abort_launch(conn, vessel):
-    if vessel.situation.name in ["pre_launch", "splashed", "landed"]:
-        if vessel.recoverable:
-            vessel.recover()
-            return True
-
-    if vessel.situation.name == "sub_orbital":
-        return False
-    if vessel.situation.name == "flying":
-        return False
-    if vessel.situation.name == "orbiting":
-        return False
-    if vessel.situation.name == "escaping":
-        return False
-    if vessel.situation.name == "docked":
-        return False
-
+def run_preflight_tests():
+    preflight_tests_path = r"C:\Users\samue\kRPC_Automation\tests\preflight\preflight_tests.py"
+    preflight_check = test_runner(preflight_tests_path)
+    return preflight_check
 
 def simple_launch(conn, vessel):
     success = False
     if vessel.situation.name != "pre_launch":
-        abort_launch(conn, vessel)
         return False
+
+
 
     vessel.auto_pilot.engage()
 
-    logger.info("Wait 5 seconds to launch...")
+    log_and_print("Wait 5 seconds to launch...")
     time.sleep(5)
-    logger.info("Launching...")
+    log_and_print("Launching...")
 
     vessel.control.activate_next_stage()
-    vessel.auto_pilot.target_pitch_and_heading(60, 180)
+
+    success = wait_for_surf_alt(conn, vessel,2000)
+    vessel.auto_pilot.target_pitch_and_heading(75, 90)
+    success = wait_for_surf_alt(conn, vessel,20000)
+    vessel.auto_pilot.target_pitch_and_heading(45, 90)
 
     success = wait_for_fuel_to_run_out(conn, vessel)
     if not success:
         return False
 
-    logger.info("Ditch the empty tank...")
+    log_and_print("Ditch the empty tank...")
     vessel.control.activate_next_stage()
 
     vessel.auto_pilot.disengage()
@@ -50,7 +51,7 @@ def simple_launch(conn, vessel):
     if not success:
         return False
 
-    logger.info("Activating Parachute.")
+    log_and_print("Activating Parachute.")
     vessel.control.activate_next_stage()
 
     time.sleep(3)
@@ -62,7 +63,7 @@ def simple_launch(conn, vessel):
 
 
 def wait_for_fuel_to_run_out(conn, vessel):
-    logger.info("Waiting for fuel to run out...")
+    log_and_print("Waiting for fuel to run out...")
     fuel_amount = conn.get_call(vessel.resources.amount, 'SolidFuel')
     expr = conn.krpc.Expression.less_than(
         conn.krpc.Expression.call(fuel_amount),
@@ -74,8 +75,8 @@ def wait_for_fuel_to_run_out(conn, vessel):
 
 
 def wait_for_safe_parachute(conn, vessel):
-    logger.info("Waiting until safe to deploy parachute...")
-    mean_altitude = conn.get_call(getattr, vessel.flight(), 'mean_altitude')
+    log_and_print("Waiting until safe to deploy parachute...")
+    mean_altitude = conn.get_call(getattr, vessel.flight(), 'surf_altitude')
     expr = conn.krpc.Expression.less_than(
         conn.krpc.Expression.call(mean_altitude),
         conn.krpc.Expression.constant_double(2000))
@@ -83,6 +84,18 @@ def wait_for_safe_parachute(conn, vessel):
     with event.condition:
         event.wait()
     return True
+
+def wait_for_surf_alt(conn, vessel, alt):
+    log_and_print(f"Waiting until altitude reaches {alt}...")
+    surf_altitude = conn.get_call(getattr, vessel.flight(), 'surf_altitude')
+    expr = conn.krpc.Expression.greater_than(
+        conn.krpc.Expression.call(surf_altitude),
+        conn.krpc.Expression.constant_double(2000))
+    event = conn.krpc.add_event(expr)
+    with event.condition:
+        event.wait()
+    return True
+
 
 
 def time_warp_to_land(conn, vessel, recover=False):
@@ -93,7 +106,7 @@ def time_warp_to_land(conn, vessel, recover=False):
     space_center = conn.space_center
     space_center.physics_warp_factor = 3
 
-    logger.info("Waiting until landing...")
+    log_and_print("Waiting until landing...")
     surface_altitude = conn.get_call(getattr, vessel.flight(), 'surface_altitude')
     expr = conn.krpc.Expression.less_than(
         conn.krpc.Expression.call(surface_altitude),
@@ -112,3 +125,16 @@ def time_warp_to_land(conn, vessel, recover=False):
             vessel.recover()
 
     return True
+
+
+if __name__ == "__main__":
+    result = run_preflight_tests()
+    if result == PytestExitCodes.ALL_PASSING:
+        log_and_print("Ready to Launch!")
+        print("Ready to Launch!")
+    else:
+        exit(1)
+
+    conn = krpc.connect(name="Connection",address='192.168.0.11',rpc_port=5000,stream_port=5001)
+    vessel = conn.space_center.active_vessel
+    simple_launch(conn, vessel)

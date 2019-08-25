@@ -13,6 +13,7 @@ class PytestExitCodes(Enum):
 def test_runner(directory):
     result_code = pytest.main(args=['-svx', directory])
     result = PytestExitCodes(result_code)
-    l
+    return result
 
 if __name__ == "__main__":
+    pass

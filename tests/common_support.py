@@ -1,5 +1,4 @@
 import krpc
-from log_setup import logger
 from enum import Enum
 from kRPC_Automation.log_setup import logger
 
