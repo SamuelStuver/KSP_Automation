@@ -1,5 +1,6 @@
 import pytest
 from enum import Enum
+import argparse
 
 class PytestExitCodes(Enum):
     ALL_PASSING    = 0
@@ -15,5 +16,7 @@ def test_runner(directory):
     result = PytestExitCodes(result_code)
     return result
 
-if __name__ == "__main__":
+def main():
     pass
+if __name__ == "__main__":
+    main()
