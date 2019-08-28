@@ -16,7 +16,7 @@ def run_preflight_tests():
     preflight_check = test_runner(preflight_tests_path)
     return preflight_check
 
-def single_burn_stage(conn, vessel, manned=True):
+def single_burn_stage(conn, vessel):
     success = False
     if vessel.situation.name != "pre_launch":
         return False
@@ -26,16 +26,13 @@ def single_burn_stage(conn, vessel, manned=True):
     surface_altitude = conn.add_stream(getattr, vessel.flight(), 'surface_altitude')
     mean_altitude = conn.add_stream(getattr, vessel.flight(), 'mean_altitude')
     apoapsis = conn.add_stream(getattr, vessel.orbit, 'apoapsis_altitude')
-    stage_2_fuel_obj = vessel.resources_in_decouple_stage(2, cumulative = False)
-    stage_2_fuel = conn.add_stream(stage_2_fuel_obj.amount, 'LiquidFuel')
+    fuel_amount = conn.add_stream(vessel.resources.amount, 'LiquidFuel')
 
-    log_and_print(f"Stage 2 Fuel: {stage_2_fuel()}")
-    log_and_print(f"Stage 2 Fuel: {stage_2_fuel()}")
+    print(fuel_amount())
 
     log_and_print("Wait 5 seconds to launch...")
-
     vessel.auto_pilot.engage()
-    vessel.auto_pilot.target_pitch_and_heading(88, 90)
+    vessel.auto_pilot.target_pitch_and_heading(90, 90)
 
     log_and_print("Wait 5 seconds to launch...")
     time.sleep(5)
@@ -43,15 +40,12 @@ def single_burn_stage(conn, vessel, manned=True):
 
     vessel.control.activate_next_stage()
 
-    log_and_print("Wait for surface altitude to reach 2000")
-    wait_for(surface_altitude, '>', 2000)
+    wait_for(surface_altitude, '>', 2000, varname="alt")
     vessel.auto_pilot.target_pitch_and_heading(65, 90)
-    log_and_print("Wait for surface altitude to reach 5000")
-    wait_for(surface_altitude, '>', 5000)
+    wait_for(surface_altitude, '>', 5000, varname="alt")
     vessel.auto_pilot.target_pitch_and_heading(45, 90)
 
-    log_and_print("Wait for fuel to run out")
-    wait_for(stage_2_fuel, '==', 0)
+    wait_for(fuel_amount, '<=', 0.01, varname="fuel")
 
     time.sleep(1)
     log_and_print("Ditch the empty tank...")
@@ -61,15 +55,14 @@ def single_burn_stage(conn, vessel, manned=True):
     vessel.auto_pilot.disengage()
 
     log_and_print(f"Wait for vessel to reach apoapsis: (apoapsis())")
-    wait_for(surface_altitude, '>', apoapsis, changing_value=True, factor=0.8)
-
+    wait_for(surface_altitude, '>', apoapsis, changing_value=True, factor=0.8, varname="apoapsis")
 
 
     log_and_print(f"Height - {apoapsis()} reached. Run Science Experiments")
     run_all_science_experiments(vessel)
 
-    log_and_print("Wait for vessel to reach 3000 m above ground")
-    wait_for(surface_altitude, '<=', 3000)
+
+    wait_for(surface_altitude, '<=', 3000, varname="alt")
 
     log_and_print("Deploying Parachute(s).")
     try:
@@ -78,11 +71,18 @@ def single_burn_stage(conn, vessel, manned=True):
     except:
         log_and_print("No Parachutes on Board")
 
+    log_and_print("Deploying Leg(s).")
+    try:
+        for leg in vessel.parts.legs:
+            leg.deployed = True
+    except:
+        log_and_print("No Legs on Board")
+
     time.sleep(3)
     time_warp_to_land(conn, vessel)
 
     log_and_print("Wait for vessel to reach the ground")
-    wait_for(surface_altitude, '<=', 10)
+    wait_for(surface_altitude, '<=', 10, varname="alt")
 
 def N_burn_stage(conn, vessel, manned=True, N_burn_stages=2):
     success = False
@@ -115,11 +115,10 @@ def N_burn_stage(conn, vessel, manned=True, N_burn_stages=2):
     log_and_print("Launching...")
     vessel.control.activate_next_stage()
 
-    log_and_print("Wait for surface altitude to reach 2000")
-    wait_for(surface_altitude, '>', 2000)
+
+    wait_for(surface_altitude, '>', 2000, varname="alt")
     vessel.auto_pilot.target_pitch_and_heading(70, 90)
-    log_and_print("Wait for surface altitude to reach 10000")
-    wait_for(surface_altitude, '>', 5000)
+    wait_for(surface_altitude, '>', 5000, varname="alt")
     vessel.auto_pilot.target_pitch_and_heading(45, 90)
 
     log_and_print("Wait for fuel to run out")
@@ -139,12 +138,11 @@ def N_burn_stage(conn, vessel, manned=True, N_burn_stages=2):
 
     log_and_print(f"Wait for time to apoapsis to reach {time_to_burn / 2} seconds")
     time_to_apoapsis = conn.add_stream(getattr, vessel.orbit, 'time_to_apoapsis')
-    wait_for(time_to_apoapsis, '<', (time_to_burn / 2))
+    wait_for(time_to_apoapsis, '<', (time_to_burn / 2), varname="apoapsis")
     log_and_print(f"Throttle back up")
     vessel.control.throttle = 1
 
-    log_and_print("Wait for periapsis alt to exceed 70km")
-    wait_for(periapsis, '>', 70000)
+    wait_for(periapsis, '>', 70000, varname="periapsis")
     log_and_print("Cut throttle and rotate...")
     vessel.control.throttle = 0
     vessel.auto_pilot.target_pitch_and_heading(0, 270)
@@ -157,8 +155,7 @@ def N_burn_stage(conn, vessel, manned=True, N_burn_stages=2):
     time.sleep(1)
 
     vessel.control.throttle = 1
-    log_and_print("Wait for fuel to run out")
-    wait_for(stage_1_fuel, '==', 0)
+    wait_for(stage_1_fuel, '==', 0, varname="stage 1 fuel")
 
     time.sleep(1)
     log_and_print("Ditch the empty tank...")
@@ -168,8 +165,7 @@ def N_burn_stage(conn, vessel, manned=True, N_burn_stages=2):
     vessel.auto_pilot.disengage()
 
 
-    log_and_print("Wait for vessel to reach 3000 m above ground")
-    wait_for(surface_altitude, '<', 3000)
+    wait_for(surface_altitude, '<', 3000, varname="alt")
 
     log_and_print("Deploying Parachute(s).")
     try:
@@ -182,7 +178,7 @@ def N_burn_stage(conn, vessel, manned=True, N_burn_stages=2):
     time_warp_to_land(conn, vessel)
 
     log_and_print("Wait for vessel to reach the ground")
-    wait_for(surface_altitude, '<=', 10)
+    wait_for(surface_altitude, '<=', 10, varname="alt")
 
 def time_warp_to_land(conn, vessel, recover=False):
     if vessel.parts.parachutes[0].state.name == "active" or vessel.parts.parachutes[0].state.name == "semi_deployed":
@@ -195,7 +191,7 @@ def time_warp_to_land(conn, vessel, recover=False):
     surface_altitude = conn.add_stream(getattr, vessel.flight(), 'surface_altitude')
 
     log_and_print("Waiting until landing...")
-    wait_for(surface_altitude, '<=', 100)
+    wait_for(surface_altitude, '<=', 100, varname="alt")
     space_center.physics_warp_factor = 0
 
     if recover:
@@ -244,4 +240,5 @@ if __name__ == "__main__":
     conn = krpc.connect(name="Connection",address='192.168.0.11',rpc_port=5000,stream_port=5001)
     vessel = conn.space_center.active_vessel
     #run_all_science_experiments(vessel)
-    N_burn_stage(conn, vessel, 'SolidFuel')
+    #N_burn_stage(conn, vessel, 'SolidFuel')
+    single_burn_stage(conn, vessel)

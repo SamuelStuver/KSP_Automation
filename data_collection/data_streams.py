@@ -1,5 +1,6 @@
 import krpc
 import time
+import math
 from kRPC_Automation.log_setup import logger
 import operator
 
@@ -28,7 +29,7 @@ def stream_value(conn, obj, attr):
     func = conn.add_stream(getattr, obj, attr)
     return func
 
-def wait_for(stream, expr_symbol, value_waiting_for, changing_value=False, factor=1):
+def wait_for(stream, expr_symbol, value_waiting_for, changing_value=False, factor=1, varname="value"):
 
     eval_func = expression_shorthand[expr_symbol]
     count = 0
@@ -37,12 +38,19 @@ def wait_for(stream, expr_symbol, value_waiting_for, changing_value=False, facto
     else:
         target_value = factor * value_waiting_for
 
+    prev_value = target_value
+    time_to_sleep = 1
+    log_and_print(f"Waiting for {varname} {expr_symbol} {target_value} (changing: {changing_value}) (currently: {stream()})")
     while eval_func(stream(), target_value) is not True:
         if changing_value:
+            log_and_print(f"Waiting for {varname} {expr_symbol} {target_value} (changing: {changing_value}) (currently: {stream()})")
             count += 1
-            time.sleep(.25)
+            log_and_print(f"sleep for 1 second and see change")
+            time.sleep(time_to_sleep)
             target_value = factor * value_waiting_for()
-            log_and_print(f"Waiting for value: {target_value}")
+            if count == 1:
+                time_to_sleep = .1 * math.fabs((target_value-stream()) / (target_value - prev_value))
+                log_and_print(f"set sleep interval to {time_to_sleep} seconds")
 
     return True
 
