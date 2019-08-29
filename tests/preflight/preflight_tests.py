@@ -32,7 +32,7 @@ def test_situation(setup_active_vessel):
     #assert (vessel.thrust / (vessel.mass * g_accel)) > 1, f"TWR < 1, cannot lift off"
 
 
-def test_check_for_crew(setup_active_vessel):
+def zzztest_check_for_crew(setup_active_vessel):
     vessel = setup_active_vessel
     crew = crew_list(vessel)
     useful_crew = 0

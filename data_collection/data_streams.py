@@ -4,10 +4,6 @@ import math
 from kRPC_Automation.log_setup import logger
 import operator
 
-def log_and_print(message):
-    logger.info(message)
-    print(message)
-
 expression_shorthand = {
     "<" : operator.lt,
     "<=": operator.le,
@@ -23,46 +19,88 @@ expression_shorthand = {
     "^" : operator.pow,
 }
 
+def log_and_print(message):
+    logger.info(message)
+    print(message)
 
-def stream_value(conn, obj, attr):
+class MissionData:
+    def __init__(self, conn, vessel):
+        self.conn = conn
+        self.vessel = vessel
+        # Universal Time
+        self.ut = conn.add_stream(getattr, conn.space_center, 'ut')
 
-    func = conn.add_stream(getattr, obj, attr)
-    return func
+        # Flight Data
+        self.surface_altitude = conn.add_stream(getattr, vessel.flight(), 'surface_altitude')
+        self.mean_altitude = conn.add_stream(getattr, vessel.flight(), 'mean_altitude')
+        self.latitude = conn.add_stream(getattr, vessel.flight(), 'latitude')
+        self.longitude = conn.add_stream(getattr, vessel.flight(), 'longitude')
+        self.velocity = conn.add_stream(getattr, vessel.flight(), 'velocity')
+        self.direction = conn.add_stream(getattr, vessel.flight(), 'direction')
+        self.prograde = conn.add_stream(getattr, vessel.flight(), 'prograde')
+        self.retrograde = conn.add_stream(getattr, vessel.flight(), 'retrograde')
 
-def wait_for(stream, expr_symbol, value_waiting_for, changing_value=False, factor=1, varname="value"):
+        # Orbit Data
+        self.apoapsis = conn.add_stream(getattr, vessel.orbit, 'apoapsis_altitude')
+        self.periapsis = conn.add_stream(getattr, vessel.orbit, 'periapsis_altitude')
+        self.semi_major_axis = conn.add_stream(getattr, vessel.orbit, 'semi_major_axis')
+        self.orbital_speed = conn.add_stream(getattr, vessel.orbit, 'orbital_speed')
+        self.orbital_period = conn.add_stream(getattr, vessel.orbit, 'period')
+        self.time_to_apoapsis = conn.add_stream(getattr, vessel.orbit, 'time_to_apoapsis')
+        self.time_to_periapsis = conn.add_stream(getattr, vessel.orbit, 'time_to_periapsis')
 
-    eval_func = expression_shorthand[expr_symbol]
-    count = 0
-    if changing_value:
-        target_value = factor * value_waiting_for()
-    else:
-        target_value = factor * value_waiting_for
+        # Resource Data
+        self.fuel_amount = {}
+        self.fuel_amount['LiquidFuel'] = conn.add_stream(vessel.resources.amount, 'LiquidFuel')
+        self.fuel_amount['SolidFuel'] = conn.add_stream(vessel.resources.amount, 'SolidFuel')
 
-    prev_value = target_value
-    time_to_sleep = 1
-    log_and_print(f"Waiting for {varname} {expr_symbol} {target_value} (changing: {changing_value}) (currently: {stream()})")
-    while eval_func(stream(), target_value) is not True:
+        self.set_get_stage_fuels()
+
+    def set_get_stage_fuels(self):
+        self.current_stage = self.vessel.control.current_stage - 1
+        self.n_stages = self.vessel.control.current_stage
+        self.current_stage_resources = self.vessel.resources_in_decouple_stage(stage=self.current_stage, cumulative=False)
+
+        self.current_stage_solidfuel = self.conn.add_stream(self.current_stage_resources.amount, 'SolidFuel')
+        self.current_stage_liquidfuel = self.conn.add_stream(self.current_stage_resources.amount, 'LiquidFuel')
+
+    def wait_for(self, stream_name, expr_symbol, value_waiting_for, changing_value=False, factor=1):
+        try:
+            stream = getattr(self, stream_name)
+        except:
+            log_and_print(f"{stream_name} data stream not available")
+            return False
+        eval_func = expression_shorthand[expr_symbol]
+        count = 0
         if changing_value:
-            log_and_print(f"Waiting for {varname} {expr_symbol} {target_value} (changing: {changing_value}) (currently: {stream()})")
-            count += 1
-            log_and_print(f"sleep for 1 second and see change")
-            time.sleep(time_to_sleep)
             target_value = factor * value_waiting_for()
-            if count == 1:
-                time_to_sleep = .1 * math.fabs((target_value-stream()) / (target_value - prev_value))
-                log_and_print(f"set sleep interval to {time_to_sleep} seconds")
+        else:
+            target_value = factor * value_waiting_for
 
-    return True
+        prev_value = target_value
+        time_to_sleep = 1
+        log_and_print(f"Waiting for {stream_name} {expr_symbol} {target_value} (changing: {changing_value}) (currently: {stream()})")
+        while eval_func(stream(), target_value) is not True:
+            if changing_value:
+                log_and_print(f"Waiting for {stream_name} {expr_symbol} {target_value} (changing: {changing_value}) (currently: {stream()})")
+                count += 1
+                log_and_print(f"sleep for 1 second and see change")
+                time.sleep(time_to_sleep)
+                target_value = factor * value_waiting_for()
+                if count == 1:
+                    time_to_sleep = .1 * math.fabs((target_value-stream()) / (target_value - prev_value))
+                    log_and_print(f"set sleep interval to {time_to_sleep} seconds")
+
+        return True
+
+    def activate_stage(self):
+        self.vessel.control.activate_next_stage()
+        self.set_get_stage_fuels()
+        print("Fuel Amounts (Total):\n", self.fuel_amount['LiquidFuel'](), self.fuel_amount['SolidFuel']())
+        print("Solid Fuel (current stage):\n", self.current_stage_solidfuel())
+        print("Liquid Fuel (current stage):\n", self.current_stage_liquidfuel())
+
 
 
 if __name__ == "__main__":
-    conn = krpc.connect(name="Connection",address='192.168.0.11',rpc_port=5000,stream_port=5001)
-    vessel = conn.space_center.active_vessel
-    flight_info = vessel.flight()
-
-    surf_alt_stream = stream_value(conn, vessel.flight(), 'surface_altitude')
-    mean_alt_stream = stream_value(conn, vessel.flight(), 'mean_altitude')
-
-    while True:
-        print(f"Surface Alt (m): {'{:.2f}'.format(surf_alt_stream())};    Mean Alt (m): {'{:.2f}'.format(mean_alt_stream())}")
-        time.sleep(2)
+    pass
