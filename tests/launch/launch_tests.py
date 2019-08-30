@@ -15,3 +15,5 @@ def test_simple_launch(setup_active_vessel, krpc_connect):
     logger.info("Initiating Simple Launch sequence")
     success = simple_launch(conn, vessel)
     assert success
+
+    conn.close()

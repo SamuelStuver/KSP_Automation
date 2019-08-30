@@ -22,11 +22,10 @@ def single_burn_stage(mission):
     if vessel.situation.name != "pre_launch":
         return False
 
-    print(f"CURRENT_STAGE: {mission.current_stage}")
-    print("Fuel Amounts (Total):\n", mission.fuel_amount['LiquidFuel'](), mission.fuel_amount['SolidFuel']())
-    print("Solid Fuel (current stage):\n", mission.current_stage_solidfuel())
-    print("Liquid Fuel (current stage):\n", mission.current_stage_liquidfuel())
-    exit(1)
+    print(f"N_Stages: {mission.n_stages}")
+    for s in mission.stages:
+        print(s.decouple_stage, s.has_fuel())
+
     log_and_print("Wait 5 seconds to launch...")
     vessel.auto_pilot.engage()
     vessel.auto_pilot.target_pitch_and_heading(90, 90)
@@ -42,7 +41,7 @@ def single_burn_stage(mission):
     mission.wait_for("surface_altitude", '>', 5000)
     vessel.auto_pilot.target_pitch_and_heading(45, 90)
 
-    mission.wait_for("current_stage_solidfuel", '<=', 0.01)
+    mission.current_stage.wait_for_no_fuel()
 
     time.sleep(1)
     log_and_print("Ditch the empty tank...")
