@@ -12,6 +12,7 @@ g_accel = 9.81
 def test_connection(krpc_connect):
     conn = krpc_connect
     assert conn is not None
+    
 
 
 def test_active_vessel(setup_active_vessel):

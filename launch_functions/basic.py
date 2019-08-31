@@ -37,9 +37,11 @@ def single_burn_stage(mission):
     mission.activate_stage()
 
     mission.wait_for("surface_altitude", '>', 2000)
-    vessel.auto_pilot.target_pitch_and_heading(65, 90)
+    vessel.auto_pilot.target_pitch_and_heading(65, 180)
     mission.wait_for("surface_altitude", '>', 5000)
-    vessel.auto_pilot.target_pitch_and_heading(45, 90)
+    vessel.auto_pilot.target_pitch_and_heading(55, 180)
+    mission.wait_for("surface_altitude", '>', 10000)
+    vessel.auto_pilot.target_pitch_and_heading(45, 180)
 
     mission.current_stage.wait_for_no_fuel()
 
@@ -74,87 +76,76 @@ def single_burn_stage(mission):
     mission.wait_for("surface_altitude", '<=', 10)
 
 def N_burn_stage(mission):
+    vessel = mission.vessel
     success = False
     if vessel.situation.name != "pre_launch":
         return False
 
-    # Set up telemetry streams
-    ut = conn.add_stream(getattr, conn.space_center, 'ut')
-    surface_altitude = conn.add_stream(getattr, vessel.flight(), 'surface_altitude')
-    mean_altitude = conn.add_stream(getattr, vessel.flight(), 'mean_altitude')
-    apoapsis = conn.add_stream(getattr, vessel.orbit, 'apoapsis_altitude')
-    periapsis = conn.add_stream(getattr, vessel.orbit, 'periapsis_altitude')
+    print(f"N_Stages: {mission.n_stages}")
+    n_burn_stages_left = 0
+    for s in mission.stages:
+        print(s.decouple_stage, s.has_fuel())
+        if s.has_fuel():
+            n_burn_stages_left += 1
 
-    stage_2_fuel_obj = vessel.resources_in_decouple_stage(3, cumulative = False)
-    stage_2_fuel = conn.add_stream(stage_2_fuel_obj.amount, 'LiquidFuel')
-    stage_1_fuel_obj = vessel.resources_in_decouple_stage(2, cumulative = False)
-    stage_1_fuel = conn.add_stream(stage_1_fuel_obj.amount, 'LiquidFuel')
-
-
-    log_and_print(f"Stage 2 Fuel: {stage_2_fuel()}")
-    log_and_print(f"Stage 1 Fuel: {stage_1_fuel()}")
-
-
-    # Engage Autopilot and set heading
+    log_and_print("Wait 5 seconds to launch...")
     vessel.auto_pilot.engage()
     vessel.auto_pilot.target_pitch_and_heading(90, 90)
 
     log_and_print("Wait 5 seconds to launch...")
     time.sleep(5)
     log_and_print("Launching...")
-    vessel.control.activate_next_stage()
 
+    mission.activate_stage()
+    log_and_print(f"Current Stage ({mission.current_stage_number}) Has Fuel? {mission.current_stage.has_fuel()}")
 
-    mission.wait_for(surface_altitude, '>', 2000)
-    vessel.auto_pilot.target_pitch_and_heading(70, 90)
-    mission.wait_for(surface_altitude, '>', 5000)
+    mission.wait_for("surface_altitude", '>', 2000)
+    vessel.auto_pilot.target_pitch_and_heading(65, 90)
+    mission.wait_for("surface_altitude", '>', 5000)
+    vessel.auto_pilot.target_pitch_and_heading(55, 90)
+    mission.wait_for("surface_altitude", '>', 7500)
     vessel.auto_pilot.target_pitch_and_heading(45, 90)
 
-    log_and_print("Wait for fuel to run out")
-    mission.wait_for(stage_2_fuel, '==', 0)
+    mission.current_stage.wait_for_no_fuel()
 
-    vessel.control.activate_next_stage()
-    log_and_print(f"Wait for apoapsis to exceed 80000km")
-    mission.wait_for(apoapsis, '>', 80000)
-    log_and_print(f"Apoapsis is {apoapsis()}. Rotate to Horizon and Cut Throttle")
-    vessel.auto_pilot.target_pitch_and_heading(0, 90)
-    vessel.control.throttle = 0
 
-    delta_v_to_circularize = calc_circularization_delta_v(vessel)
-    log_and_print(f"Need delta v of {delta_v_to_circularize} m/s to circularize")
-    time_to_burn = burn_time(vessel, delta_v_to_circularize)
-    log_and_print(f"Burn time to circularize is {time_to_burn}")
+    log_and_print("Ditch the empty tank...")
+    mission.activate_stage()
+    log_and_print(f"Current Stage ({mission.current_stage_number}) Has Fuel? {mission.current_stage.has_fuel()}")
+    if mission.current_stage.has_fuel():
+        vessel.auto_pilot.target_direction(mission.prograde())
+        log_and_print("Wait for apoapsis to exceed 70km")
+        mission.wait_for("apoapsis", '>', 70000)
+        vessel.control.throttle = 0
 
-    log_and_print(f"Wait for time to apoapsis to reach {time_to_burn / 2} seconds")
-    time_to_apoapsis = conn.add_stream(getattr, vessel.orbit, 'time_to_apoapsis')
-    mission.wait_for(time_to_apoapsis, '<', (time_to_burn / 2))
-    log_and_print(f"Throttle back up")
+
+    dv_to_circ = calc_circularization_delta_v(vessel)
+    time_for_burn = burn_time(vessel, dv_to_circ)
+    vessel.auto_pilot.target_direction(mission.prograde())
+
+    mission.wait_for("time_to_apoapsis", '<=', time_for_burn/2.)
+
     vessel.control.throttle = 1
-
-    mission.wait_for(periapsis, '>', 70000)
-    log_and_print("Cut throttle and rotate...")
+    mission.wait_for("periapsis", '>', 70000)
     vessel.control.throttle = 0
-    vessel.auto_pilot.target_pitch_and_heading(0, 270)
 
-    input("Press enter when ready to de-orbit...")
-
-    log_and_print(f"Run Science Experiments")
+    log_and_print(f"Orbit obtained. Run Science Experiments")
     run_all_science_experiments(vessel)
 
-    time.sleep(1)
+    vessel.auto_pilot.target_direction(mission.retrograde())
+    input("Press any key to de-orbit...")
 
+    time.sleep(5)
+    log_and_print(f"De-Orbit in 5 seconds...")
     vessel.control.throttle = 1
-    mission.wait_for(stage_1_fuel, '==', 0)
 
-    time.sleep(1)
-    log_and_print("Ditch the empty tank...")
-    vessel.control.activate_next_stage()
+    # log_and_print("Disengage auto-pilot")
+    # vessel.auto_pilot.disengage()
 
-    log_and_print("Disengage auto-pilot")
-    vessel.auto_pilot.disengage()
+    mission.current_stage.wait_for_no_fuel()
 
 
-    mission.wait_for(surface_altitude, '<', 3000)
+    mission.wait_for("surface_altitude", '<=', 3000)
 
     log_and_print("Deploying Parachute(s).")
     try:
@@ -164,10 +155,10 @@ def N_burn_stage(mission):
         log_and_print("No Parachutes on Board")
 
     time.sleep(3)
-    time_warp_to_land(conn, vessel)
+    time_warp_to_land(mission)
 
     log_and_print("Wait for vessel to reach the ground")
-    mission.wait_for(surface_altitude, '<=', 10)
+    mission.wait_for("surface_altitude", '<=', 10)
 
 def time_warp_to_land(mission, recover=False):
     vessel = mission.vessel

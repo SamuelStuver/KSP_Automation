@@ -23,6 +23,8 @@ def krpc_connect():
     else:
         assert False, f"Failed to establish connection"
 
+    conn.close()
+
 
 @pytest.fixture(scope="function")
 def setup_active_vessel(krpc_connect):
