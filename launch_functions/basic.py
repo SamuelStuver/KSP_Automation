@@ -88,6 +88,7 @@ def N_burn_stage(mission):
         if s.has_fuel():
             n_burn_stages_left += 1
 
+
     log_and_print("Wait 5 seconds to launch...")
     vessel.auto_pilot.engage()
     vessel.auto_pilot.target_pitch_and_heading(90, 90)
@@ -103,7 +104,7 @@ def N_burn_stage(mission):
     vessel.auto_pilot.target_pitch_and_heading(65, 90)
     mission.wait_for("surface_altitude", '>', 5000)
     vessel.auto_pilot.target_pitch_and_heading(55, 90)
-    mission.wait_for("surface_altitude", '>', 7500)
+    mission.wait_for("surface_altitude", '>', 10000)
     vessel.auto_pilot.target_pitch_and_heading(45, 90)
 
     mission.current_stage.wait_for_no_fuel()
@@ -113,30 +114,30 @@ def N_burn_stage(mission):
     mission.activate_stage()
     log_and_print(f"Current Stage ({mission.current_stage_number}) Has Fuel? {mission.current_stage.has_fuel()}")
     if mission.current_stage.has_fuel():
-        vessel.auto_pilot.target_direction(mission.prograde())
+        vessel.auto_pilot.target_pitch_and_heading(45, 90)
         log_and_print("Wait for apoapsis to exceed 70km")
-        mission.wait_for("apoapsis", '>', 70000)
+        mission.wait_for("apoapsis", '>', 80000)
         vessel.control.throttle = 0
-
 
     dv_to_circ = calc_circularization_delta_v(vessel)
     time_for_burn = burn_time(vessel, dv_to_circ)
-    vessel.auto_pilot.target_direction(mission.prograde())
+
+    vessel.auto_pilot.target_pitch_and_heading(0, 90)
 
     mission.wait_for("time_to_apoapsis", '<=', time_for_burn/2.)
 
     vessel.control.throttle = 1
-    mission.wait_for("periapsis", '>', 70000)
+    mission.wait_for("periapsis", '>', 71000)
     vessel.control.throttle = 0
 
     log_and_print(f"Orbit obtained. Run Science Experiments")
     run_all_science_experiments(vessel)
 
-    vessel.auto_pilot.target_direction(mission.retrograde())
-    input("Press any key to de-orbit...")
+    vessel.auto_pilot.target_pitch_and_heading(0, 270)
 
-    time.sleep(5)
-    log_and_print(f"De-Orbit in 5 seconds...")
+    log_and_print(f"De-Orbit in 30 seconds...")
+    time.sleep(30)
+
     vessel.control.throttle = 1
 
     # log_and_print("Disengage auto-pilot")
@@ -144,6 +145,8 @@ def N_burn_stage(mission):
 
     mission.current_stage.wait_for_no_fuel()
 
+    mission.activate_stage()
+    vessel.auto_pilot.disengage()
 
     mission.wait_for("surface_altitude", '<=', 3000)
 
@@ -222,5 +225,5 @@ if __name__ == "__main__":
     vessel = conn.space_center.active_vessel
     mission = MissionData(conn, vessel)
     #run_all_science_experiments(vessel)
-    #N_burn_stage(mission)
-    single_burn_stage(mission)
+    N_burn_stage(mission)
+    #single_burn_stage(mission)
